@@ -1,5 +1,6 @@
 """
-Script to process the data for the Neurospin 2018 hackathon
+Script to process the Localizer data for the Neurospin 2018 hackathon on the
+cortical surface.
 
 Author: Bertrand Thirion, 2018
 """
@@ -24,8 +25,8 @@ data_dir = '/neurospin/tmp/tfmri-hackathon-2018/data'
 subjects = ['sub-S%02d' % i for i in range(1, 21)]
 session = 'ses-V1'
 task = 'localizer'
-
-for subject in subjects:
+effects = {}
+for subject_idx, subject in enumerate(subjects)[:1]:
     #########################################################################
     # Define data paths
     source_dir = os.path.join(data_dir, task, 'sourcedata', subject, session,
@@ -33,9 +34,10 @@ for subject in subjects:
     paradigm_file = os.path.join(source_dir, '%s_%s_task-%s_events.tsv'
                                  % (subject, session, task))
     derivative_dir = os.path.join(data_dir, task, 'derivatives',
-                                  'spmpreproc_%s' % session, subject)
-    fmri_img = os.path.join(derivative_dir, 'wrr%s_%s_task-%s_bold.nii.gz'
-                            % (subject, session, task))
+                                  'freesurfer_projection_%s' % session, subject)
+    fmri_img = os.path.join(
+        derivative_dir, 'wrr%s_%s_task-%s_bold.ico7.s5.lh.gii' %
+        (subject, session, task))
     paradigm = pd.read_csv(paradigm_file, sep='\t')
     paradigm['trial_type'] = paradigm['trial_name']
 
@@ -49,15 +51,20 @@ for subject in subjects:
     # Perform first level analysis
     # ----------------------------
     # Setup and fit GLM
-    first_level_model = FirstLevelModel(t_r, slice_time_ref,
-                                        hrf_model='glover + derivative')
-    first_level_model = first_level_model.fit(fmri_img, paradigm)
+    # load the data
+    from nibabel.gifti import read, write, GiftiDataArray, GiftiImage
+    from nistats.first_level_model import run_glm, compute_contrast
+    texture = np.array([darrays.data for darrays in read(fmri_path).darrays])
+    from nistats.design_matrix import make_design_matrix
+    frame_times = t_r * (np.arange(texture.shape[1]) + .5)
+    design_matrix = make_design_matrix(
+        frame_times, paradigm=paradigm, hrf_model='glover + derivative')
+    labels, res = run_glm(texture.T, design_matrix.values)
 
     #########################################################################
     # Estimate contrasts
     # ------------------
     # get the design matrix and save it to disk
-    design_matrix = first_level_model.design_matrices_[0]
     design_matrix.to_csv(os.path.join(write_dir, 'design_matrix.csv'))
     ax = plot_design_matrix(design_matrix)
     plt.savefig(os.path.join(write_dir, 'design_matrix.png'))
@@ -74,24 +81,24 @@ for subject in subjects:
     for index, (contrast_id, contrast_val) in enumerate(contrasts.items()):
         print('  Contrast % 2i out of %i: %s' %
               (index + 1, len(contrasts), contrast_id))
-        z_map = first_level_model.compute_contrast(contrast_val,
-                                                   output_type='z_score')
-        effect_map = first_level_model.compute_contrast(
-            contrast_val, output_type='effect_size')
-        # Create snapshots of the contrasts
-        _, threshold = map_threshold(z_map, threshold=.05,
-                                     height_control='fdr')
-        out_file = os.path.join(write_dir, '%s_z_map.png' % contrast_id)
-        display = plotting.plot_stat_map(z_map, display_mode='z',
-                                         threshold=threshold,
-                                         title=contrast_id,
-                                         output_file=out_file)
-        # write image to disk
-        z_map.to_filename(os.path.join(write_dir, '%s_z_map.nii.gz'
-                          % contrast_id))
-        effect_map.to_filename(os.path.join(write_dir, '%s_effects.nii.gz'
-                               % contrast_id))
+        if subject_idx == 0:
+            lh_effects[contrast_id] = []
 
+        contrast_ = compute_contrast(labels, res, contrast_val)
+        z_map = contrast_.z_score()
+        effect = contrast_.effect
+        lh_effects[contrast_id].append(effect)
+        # Create snapshots of the contrasts
+        #_, threshold = map_threshold(z_map, threshold=.05,
+        #                                 height_control='fdr')
+        out_file = os.path.join(write_dir, '%s_z_map.png' % contrast_id)
+        plotting.plot_surf_stat_map(
+            fsaverage.infl_left, z_map, hemi='left',
+            title=contrast_id, colorbar=True,
+            threshold=3., bg_map=fsaverage.sulc_right, output_file=out_file)
+
+
+"""
 plt.close('all')
 import pandas as pd
 n_subjects = len(subjects)
@@ -106,7 +113,7 @@ for contrast_id in contrasts.keys():
         os.path.join(data_dir, task, 'derivatives', 'spmpreproc_%s' %
                      session, subject, 'glm', '%s_effects.nii.gz' % contrast_id)
                      for subject in subjects]
-    second_level_model = SecondLevelModel(smoothing_fwhm=5).fit(
+    second_level_model = SecondLevelModel().fit(
         cmap_filenames, design_matrix=group_design_matrix)
     z_map = second_level_model.compute_contrast(output_type='z_score')
     thresholded_map, threshold = map_threshold(
@@ -123,3 +130,4 @@ for contrast_id in contrasts.keys():
                                        % contrast_id))
 
 # plotting.show()
+"""
