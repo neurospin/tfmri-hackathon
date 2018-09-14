@@ -20,7 +20,7 @@ slice_time_ref = 0.5
 # Prepare data
 
 data_dir = '/neurospin/tmp/tfmri-hackathon-2018/data'
-subjects = ['sub-S%02d' % i for i in range(1, 20)]
+subjects = ['sub-S%02d' % i for i in range(1, 21)]
 session = 'ses-V1'
 task = 'localizer'
 
@@ -121,5 +121,33 @@ for subject in subjects:
                                            % contrast_id))
 
 plt.close('all')
+import pandas as pd
+n_subjects = len(subjects)
+group_design_matrix = pd.DataFrame([1] * n_subjects, columns=['intercept'])
+group_dir = os.path.join(data_dir, task, 'derivatives', 'group')
+if not os.path.exists(group_dir):
+    os.mkdir(group_dir)
+
+from nistats.second_level_model import SecondLevelModel
+for contrast_id in contrasts.keys():
+    cmap_filenames = [
+        os.path.join(data_dir, task, 'derivatives', 'spmpreproc_%s' %
+                     session, subject, 'glm', '%s_effects.nii.gz' % contrast_id)
+                     for subject in subjects]
+    second_level_model = SecondLevelModel().fit(
+        cmap_filenames, design_matrix=group_design_matrix)
+    z_map = second_level_model.compute_contrast(output_type='z_score')
+    thresholded_map, threshold = map_threshold(
+        z_map, threshold=.1, height_control='fdr', cluster_threshold=10)
+    z_map.to_filename(os.path.join(group_dir, '%s_z_map.nii.gz'
+                      % contrast_id))
+    output_file = os.path.join(group_dir, '%s_z_map.png'
+                               % contrast_id)
+    plotting.plot_stat_map(thresholded_map,
+                           title='%s, fdr = .1' % contrast_id,
+                           threshold=threshold, output_file=output_file)
+    clusters_table = get_clusters_table(z_map, threshold, 10)
+    clusters_table.to_csv(os.path.join(group_dir, '%s_clusters.csv'
+                                       % contrast_id))
 
 # plotting.show()
