@@ -28,7 +28,7 @@ task = 'localizer'
 fsaverage = datasets.fetch_surf_fsaverage(mesh='fsaverage')
 lh_effects = {}
 rh_effects = {}
-for subject_idx, subject in enumerate(subjects[:1]):
+for subject_idx, subject in enumerate(subjects):
     #########################################################################
     # Define data paths
     source_dir = os.path.join(data_dir, task, 'sourcedata', subject, session,
@@ -73,6 +73,9 @@ for subject_idx, subject in enumerate(subjects[:1]):
     # plt.savefig(os.path.join(write_dir, 'contrasts.png'))
 
     for hemisphere in ['left', 'right']:
+        effects = lh_effects
+        if hemisphere == 'right':
+            effects = rh_effects
         fmri_img = os.path.join(
             derivative_dir, 'wrr%s_%s_task-%s_bold.ico7.s5.%sh.gii' %
             (subject, session, task, hemisphere[0]))
@@ -85,12 +88,12 @@ for subject_idx, subject in enumerate(subjects[:1]):
             print('  Contrast % 2i out of %i: %s' %
                   (index + 1, len(contrasts), contrast_id))
             if subject_idx == 0:
-                lh_effects[contrast_id] = []
+                effects[contrast_id] = []
 
             contrast_ = compute_contrast(labels, res, contrast_val)
             z_map = contrast_.z_score()
             effect = contrast_.effect
-            lh_effects[contrast_id].append(effect)
+            effects[contrast_id].append(effect)
             # Create snapshots of the contrasts
             threshold = fdr_threshold(z_map, alpha=.05)
             out_file = os.path.join(write_dir, '%s_%s_z_map.png' % (
@@ -101,36 +104,26 @@ for subject_idx, subject in enumerate(subjects[:1]):
                 threshold=threshold, bg_map=fsaverage['sulc_%s' % hemisphere])
 
 
-"""
-plt.close('all')
 import pandas as pd
 n_subjects = len(subjects)
 group_design_matrix = pd.DataFrame([1] * n_subjects, columns=['intercept'])
-group_dir = os.path.join(data_dir, task, 'derivatives', 'pypreprocess', 'group')
+group_dir = os.path.join(data_dir, task, 'derivatives',
+                         'freesurfer_projection_%s' % session, 'group')
 if not os.path.exists(group_dir):
     os.mkdir(group_dir)
 
 from nistats.second_level_model import SecondLevelModel
 for contrast_id in contrasts.keys():
-    cmap_filenames = [
-        os.path.join(data_dir, task, 'derivatives', 'spmpreproc_%s' %
-                     session, subject, 'glm', '%s_effects.nii.gz' % contrast_id)
-                     for subject in subjects]
-    second_level_model = SecondLevelModel().fit(
-        cmap_filenames, design_matrix=group_design_matrix)
-    z_map = second_level_model.compute_contrast(output_type='z_score')
-    thresholded_map, threshold = map_threshold(
-        z_map, threshold=.1, height_control='fdr', cluster_threshold=10)
-    z_map.to_filename(os.path.join(group_dir, '%s_z_map.nii.gz'
-                      % contrast_id))
-    output_file = os.path.join(group_dir, '%s_z_map.png'
-                               % contrast_id)
-    plotting.plot_stat_map(thresholded_map,
-                           title='%s, fdr = .1' % contrast_id,
-                           threshold=threshold, output_file=output_file)
-    clusters_table = get_clusters_table(z_map, 3., 10)
-    clusters_table.to_csv(os.path.join(group_dir, '%s_clusters.csv'
-                                       % contrast_id))
-
-# plotting.show()
-"""
+    for hemisphere, effects in zip(['left', 'right'],
+                                   ['lh_effects', 'right_effects']):
+        Y = effects[contrast_id]
+        labels, res = run_glm(texture.T, group_design_matrix.values)
+        contrast_ = compute_contrast(labels, res, [1])
+        z_map = contrast_.z_score()
+        threshold = fdr_threshold(z_map, alpha=.05)
+        out_file = os.path.join(write_dir, '%s_%s_z_map.png' % (
+                                contrast_id, hemisphere))
+        plotting.plot_surf_stat_map(
+            fsaverage['infl_%s' % hemisphere], z_map, hemi=hemisphere,
+            title=contrast_id, colorbar=True, output_file=out_file,
+            threshold=threshold, bg_map=fsaverage['sulc_%s' % hemisphere])
