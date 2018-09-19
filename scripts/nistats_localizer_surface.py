@@ -8,15 +8,15 @@ import os
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-from nilearn import plotting
+from nilearn import plotting, datasets
 from nistats.first_level_model import FirstLevelModel
-from nistats.thresholding import map_threshold
+from nistats.thresholding import fdr_threshold
 from nistats.reporting import plot_design_matrix, plot_contrast_matrix
-from nistats.reporting import get_clusters_table
 from contrasts_localizer import make_localizer_contrasts
 
 t_r = 2.4
 slice_time_ref = 0.5
+n_scans = 128
 
 #########################################################################
 # Prepare data
@@ -25,8 +25,10 @@ data_dir = '/neurospin/tmp/tfmri-hackathon-2018/data'
 subjects = ['sub-S%02d' % i for i in range(1, 21)]
 session = 'ses-V1'
 task = 'localizer'
-effects = {}
-for subject_idx, subject in enumerate(subjects)[:1]:
+fsaverage = datasets.fetch_surf_fsaverage(mesh='fsaverage')
+lh_effects = {}
+rh_effects = {}
+for subject_idx, subject in enumerate(subjects[:1]):
     #########################################################################
     # Define data paths
     source_dir = os.path.join(data_dir, task, 'sourcedata', subject, session,
@@ -35,9 +37,6 @@ for subject_idx, subject in enumerate(subjects)[:1]:
                                  % (subject, session, task))
     derivative_dir = os.path.join(data_dir, task, 'derivatives',
                                   'freesurfer_projection_%s' % session, subject)
-    fmri_img = os.path.join(
-        derivative_dir, 'wrr%s_%s_task-%s_bold.ico7.s5.lh.gii' %
-        (subject, session, task))
     paradigm = pd.read_csv(paradigm_file, sep='\t')
     paradigm['trial_type'] = paradigm['trial_name']
 
@@ -52,14 +51,13 @@ for subject_idx, subject in enumerate(subjects)[:1]:
     # ----------------------------
     # Setup and fit GLM
     # load the data
-    from nibabel.gifti import read, write, GiftiDataArray, GiftiImage
-    from nistats.first_level_model import run_glm, compute_contrast
-    texture = np.array([darrays.data for darrays in read(fmri_path).darrays])
+    from nibabel.gifti import read
+    from nistats.first_level_model import run_glm
+    from nistats.contrasts import compute_contrast
     from nistats.design_matrix import make_design_matrix
-    frame_times = t_r * (np.arange(texture.shape[1]) + .5)
+    frame_times = t_r * (np.arange(n_scans) + .5)
     design_matrix = make_design_matrix(
         frame_times, paradigm=paradigm, hrf_model='glover + derivative')
-    labels, res = run_glm(texture.T, design_matrix.values)
 
     #########################################################################
     # Estimate contrasts
@@ -71,31 +69,36 @@ for subject_idx, subject in enumerate(subjects)[:1]:
 
     # Specify the contrasts
     contrasts = make_localizer_contrasts(design_matrix)
-
     # plot_contrast_matrix(pd.DataFrame(contrasts), design_matrix)
     # plt.savefig(os.path.join(write_dir, 'contrasts.png'))
 
-    #########################################################################
-    # contrast estimation
+    for hemisphere in ['left', 'right']:
+        fmri_img = os.path.join(
+            derivative_dir, 'wrr%s_%s_task-%s_bold.ico7.s5.%sh.gii' %
+            (subject, session, task, hemisphere[0]))
+        texture = np.array([
+            darrays.data for darrays in read(fmri_img).darrays]).T
+        labels, res = run_glm(texture.T, design_matrix.values)
+        #######################################################################
+        # contrast estimation
+        for index, (contrast_id, contrast_val) in enumerate(contrasts.items()):
+            print('  Contrast % 2i out of %i: %s' %
+                  (index + 1, len(contrasts), contrast_id))
+            if subject_idx == 0:
+                lh_effects[contrast_id] = []
 
-    for index, (contrast_id, contrast_val) in enumerate(contrasts.items()):
-        print('  Contrast % 2i out of %i: %s' %
-              (index + 1, len(contrasts), contrast_id))
-        if subject_idx == 0:
-            lh_effects[contrast_id] = []
-
-        contrast_ = compute_contrast(labels, res, contrast_val)
-        z_map = contrast_.z_score()
-        effect = contrast_.effect
-        lh_effects[contrast_id].append(effect)
-        # Create snapshots of the contrasts
-        #_, threshold = map_threshold(z_map, threshold=.05,
-        #                                 height_control='fdr')
-        out_file = os.path.join(write_dir, '%s_z_map.png' % contrast_id)
-        plotting.plot_surf_stat_map(
-            fsaverage.infl_left, z_map, hemi='left',
-            title=contrast_id, colorbar=True,
-            threshold=3., bg_map=fsaverage.sulc_right, output_file=out_file)
+            contrast_ = compute_contrast(labels, res, contrast_val)
+            z_map = contrast_.z_score()
+            effect = contrast_.effect
+            lh_effects[contrast_id].append(effect)
+            # Create snapshots of the contrasts
+            threshold = fdr_threshold(z_map, alpha=.05)
+            out_file = os.path.join(write_dir, '%s_%s_z_map.png' % (
+                                    contrast_id, hemisphere))
+            plotting.plot_surf_stat_map(
+                fsaverage['infl_%s' % hemisphere], z_map, hemi=hemisphere,
+                title=contrast_id, colorbar=True, output_file=out_file,
+                threshold=threshold, bg_map=fsaverage['sulc_%s' % hemisphere])
 
 
 """
