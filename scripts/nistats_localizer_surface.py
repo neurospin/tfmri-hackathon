@@ -81,7 +81,7 @@ for subject_idx, subject in enumerate(subjects):
             (subject, session, task, hemisphere[0]))
         texture = np.array([
             darrays.data for darrays in read(fmri_img).darrays]).T
-        labels, res = run_glm(texture.T, design_matrix.values)
+        labels, res = run_glm(texture.T, design_matrix.values[:texture.shape[1]])
         #######################################################################
         # contrast estimation
         for index, (contrast_id, contrast_val) in enumerate(contrasts.items()):
@@ -115,13 +115,13 @@ if not os.path.exists(group_dir):
 from nistats.second_level_model import SecondLevelModel
 for contrast_id in contrasts.keys():
     for hemisphere, effects in zip(['left', 'right'],
-                                   ['lh_effects', 'right_effects']):
-        Y = effects[contrast_id]
-        labels, res = run_glm(texture.T, group_design_matrix.values)
+                                   [lh_effects, rh_effects]):
+        Y = np.array(effects[contrast_id])[:, 0]
+        labels, res = run_glm(Y, group_design_matrix.values)
         contrast_ = compute_contrast(labels, res, [1])
         z_map = contrast_.z_score()
         threshold = fdr_threshold(z_map, alpha=.05)
-        out_file = os.path.join(write_dir, '%s_%s_z_map.png' % (
+        out_file = os.path.join(group_dir, '%s_%s_z_map.png' % (
                                 contrast_id, hemisphere))
         plotting.plot_surf_stat_map(
             fsaverage['infl_%s' % hemisphere], z_map, hemi=hemisphere,
