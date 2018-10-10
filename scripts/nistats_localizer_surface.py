@@ -21,7 +21,7 @@ n_scans = 128
 #########################################################################
 # Prepare data
 
-data_dir = '/neurospin/tmp/tfmri-hackathon-2018/data'
+data_dir = '/neurospin/tmp/tfmri-hackathon-2018/shared_data'
 subjects = ['sub-S%02d' % i for i in range(1, 21)]
 session = 'ses-V1'
 task = 'localizer'
@@ -54,10 +54,10 @@ for subject_idx, subject in enumerate(subjects):
     from nibabel.gifti import read
     from nistats.first_level_model import run_glm
     from nistats.contrasts import compute_contrast
-    from nistats.design_matrix import make_design_matrix
+    from nistats.design_matrix import make_first_level_design_matrix
     frame_times = t_r * (np.arange(n_scans) + .5)
-    design_matrix = make_design_matrix(
-        frame_times, paradigm=paradigm, hrf_model='glover + derivative')
+    design_matrix = make_first_level_design_matrix(
+        frame_times, events=paradigm, hrf_model='glover + derivative')
 
     #########################################################################
     # Estimate contrasts

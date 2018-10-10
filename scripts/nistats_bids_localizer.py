@@ -6,7 +6,7 @@ from nistats.first_level_model import first_level_models_from_bids
 
 # first do some renaming -> symlinks
 subjects = ['S%02d' % i for i in range(1, 21)]
-data_dir = '/neurospin/tmp/tfmri-hackathon-2018/data'
+data_dir = '/neurospin/tmp/tfmri-hackathon-2018/shared_data'
 for subject in subjects:
     src = os.path.join(data_dir, 'localizer', 'sourcedata', 'sub-' + subject, 'ses-V1',
                        'func', 'sub-%s_ses-V1_task-localizer_events.tsv'

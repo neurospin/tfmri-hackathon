@@ -20,7 +20,7 @@ slice_time_ref = 0.5
 #########################################################################
 # Prepare data
 
-data_dir = '/neurospin/tmp/tfmri-hackathon-2018/data'
+data_dir = '/neurospin/tmp/tfmri-hackathon-2018/shared_data'
 subjects = ['sub-S%02d' % i for i in range(1, 21)]
 session = 'ses-V1'
 task = 'localizer'
@@ -79,7 +79,7 @@ for subject in subjects:
         effect_map = first_level_model.compute_contrast(
             contrast_val, output_type='effect_size')
         # Create snapshots of the contrasts
-        _, threshold = map_threshold(z_map, threshold=.05,
+        _, threshold = map_threshold(z_map, level=.05,
                                      height_control='fdr')
         out_file = os.path.join(write_dir, '%s_z_map.png' % contrast_id)
         display = plotting.plot_stat_map(z_map, display_mode='z',
@@ -110,7 +110,7 @@ for contrast_id in contrasts.keys():
         cmap_filenames, design_matrix=group_design_matrix)
     z_map = second_level_model.compute_contrast(output_type='z_score')
     thresholded_map, threshold = map_threshold(
-        z_map, threshold=.1, height_control='fdr', cluster_threshold=10)
+        z_map, level=.1, height_control='fdr', cluster_threshold=10)
     z_map.to_filename(os.path.join(group_dir, '%s_z_map.nii.gz'
                       % contrast_id))
     output_file = os.path.join(group_dir, '%s_z_map.png'
