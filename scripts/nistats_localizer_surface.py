@@ -120,7 +120,7 @@ for contrast_id in contrasts.keys():
         labels, res = run_glm(Y, group_design_matrix.values)
         contrast_ = compute_contrast(labels, res, [1])
         z_map = contrast_.z_score()
-        threshold = fdr_threshold(z_map, alpha=.05)
+        threshold = fdr_threshold(z_map, alpha=.1)
         out_file = os.path.join(group_dir, '%s_%s_z_map.png' % (
                                 contrast_id, hemisphere))
         plotting.plot_surf_stat_map(
